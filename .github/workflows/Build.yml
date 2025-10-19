@@ -1,0 +1,49 @@
+name: Build InnoExtract (Windows, MSYS2 MinGW)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          update: true
+          install: >
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-boost
+            mingw-w64-x86_64-xz
+            mingw-w64-x86_64-libiconv
+          msystem: MINGW64
+
+      - name: Configure build
+        shell: msys2 {0}
+        run: |
+          mkdir -p build && cd build
+          cmake .. \
+            -G "MinGW Makefiles" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DUSE_LZMA=ON \
+            -DUSE_STATIC_LIBS=ON \
+            -DBUILD_TESTS=OFF \
+            -DRUN_TESTS=OFF \
+            -DCONTINUOUS_INTEGRATION=OFF \
+            -DUSE_LTO=OFF
+
+      - name: Build innoextract.exe
+        shell: msys2 {0}
+        run: |
+          cmake --build build --config Release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: innoextract-windows-mingw64
+          path: build/innoextract.exe
