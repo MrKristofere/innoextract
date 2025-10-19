@@ -2,6 +2,12 @@ name: Build InnoExtract (Windows, MSYS2 MinGW)
 
 on:
   workflow_dispatch:
+    inputs:
+      STATIC_BUILD:
+        description: 'Build with static libraries'
+        required: true
+        default: true
+        type: boolean
 
 jobs:
   build:
@@ -31,7 +37,7 @@ jobs:
             -G "MinGW Makefiles" \
             -DCMAKE_BUILD_TYPE=Release \
             -DUSE_LZMA=ON \
-            -DUSE_STATIC_LIBS=ON \
+            -DUSE_STATIC_LIBS=${{ inputs.STATIC_BUILD }} \
             -DBUILD_TESTS=OFF \
             -DRUN_TESTS=OFF \
             -DCONTINUOUS_INTEGRATION=OFF \
@@ -39,11 +45,10 @@ jobs:
 
       - name: Build innoextract.exe
         shell: msys2 {0}
-        run: |
-          cmake --build build --config Release
+        run: cmake --build build --config Release
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: innoextract-windows-mingw64
-          path: build/innoextract.exe
+          path: ${{ inputs.STATIC_BUILD == 'true' && 'build/innoextract.exe' || 'build/innoextract.exe,build/*.dll' }}
