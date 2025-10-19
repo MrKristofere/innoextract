@@ -51,4 +51,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: innoextract-windows-mingw64
-          path: ${{ inputs.STATIC_BUILD == 'true' && 'build/innoextract.exe' || 'build/innoextract.exe,build/*.dll' }}
+          path: |
+            build/innoextract.exe
+            build/*.dll
