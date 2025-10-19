@@ -2,15 +2,27 @@ name: CI
 
 on:
   workflow_dispatch:
+    inputs:
+      build_linux:
+        description: 'Build for Linux'
+        required: false
+        default: 'true'
+        type: boolean
+      build_macos:
+        description: 'Build for macOS'
+        required: false
+        default: 'true'
+        type: boolean
 
 jobs:
 
   linux:
     name: Linux build
     runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.build_linux == 'true' }}
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Update
       run: sudo apt-get update
@@ -27,12 +39,19 @@ jobs:
     - name: Check Style
       run: cmake --build ${{github.workspace}}/build --target style
 
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: innoextract-linux-binaries
+        path: ${{github.workspace}}/build/innoextract
+
   macos:
     name: macOS build
     runs-on: macos-latest
+    if: ${{ github.event.inputs.build_macos == 'true' }}
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
     - name: Update
       run: brew update
@@ -50,3 +69,9 @@ jobs:
 
     - name: Build
       run: cmake --build ${{github.workspace}}/build
+      
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: innoextract-macos-binaries
+        path: ${{github.workspace}}/build/innoextract
