@@ -32,6 +32,11 @@ jobs:
           git clone https://github.com/dscharrer/innoextract.git
           cd innoextract
 
+      - name: Find static libraries
+        shell: msys2 {0}
+        run: |
+          find /mingw64 -name "*.a" | grep -E "(bz2|z|lzma|iconv)" | head -10
+
       - name: Configure build
         shell: msys2 {0}
         run: |
@@ -52,20 +57,23 @@ jobs:
             -DRUN_TESTS=OFF \
             -DUSE_LTO=OFF \
             -DSET_OPTIMIZATION_FLAGS=ON \
-            -DCMAKE_EXE_LINKER_FLAGS="-static -static-libgcc -static-libstdc++"
+            -DCMAKE_EXE_LINKER_FLAGS="-static -static-libgcc -static-libstdc++" \
+            -DBZIP2_LIBRARIES="/mingw64/lib/libbz2.a" \
+            -DBZIP2_INCLUDE_DIR="/mingw64/include"
 
       - name: Build innoextract
         shell: msys2 {0}
         run: |
           cd innoextract/build
-          mingw32-make -j$(nproc)
+          mingw32-make -j$(nproc) VERBOSE=1
 
       - name: Check binary dependencies
         shell: msys2 {0}
         run: |
           cd innoextract/build
-          ldd innoextract.exe || true
+          ldd innoextract.exe 2>/dev/null || echo "Binary is static or ldd not available"
           file innoextract.exe
+          strings innoextract.exe | grep "\.dll" || echo "No DLL dependencies found"
 
       - name: Test binary
         shell: msys2 {0}
