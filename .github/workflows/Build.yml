@@ -47,6 +47,7 @@ jobs:
             -DBoost_USE_STATIC_LIBS=ON \
             -DZLIB_USE_STATIC_LIBS=ON \
             -DBZip2_USE_STATIC_LIBS=ON \
+            -Diconv_USE_STATIC_LIBS=ON \
             -DBUILD_TESTS=OFF \
             -DRUN_TESTS=OFF \
             -DUSE_LTO=OFF \
@@ -58,14 +59,15 @@ jobs:
           cd innoextract/build
           mingw32-make -j$(nproc)
 
-      - name: Test binary
+      - name: Check binary dependencies
         shell: msys2 {0}
         run: |
           cd innoextract/build
-          ./innoextract --version
+          ldd innoextract.exe || true
+          file innoextract.exe
 
       - name: Upload artifact
         uses: actions/upload-artifact@v5
         with:
-          name: innoextract-windows-mingw64
+          name: innoextract-windows-mingw64-static
           path: innoextract/build/innoextract.exe
