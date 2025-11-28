@@ -24,6 +24,7 @@ jobs:
             mingw-w64-x86_64-zlib
             mingw-w64-x86_64-bzip2
             git
+            make
           msystem: MINGW64
 
       - name: Clone innoextract repository
@@ -56,7 +57,7 @@ jobs:
         shell: msys2 {0}
         run: |
           cd innoextract/build
-          make -j$(nproc)
+          mingw32-make -j$(nproc)
 
       - name: Test binary
         shell: msys2 {0}
