@@ -52,6 +52,7 @@ jobs:
             -DRUN_TESTS=OFF \
             -DUSE_LTO=OFF \
             -DSET_OPTIMIZATION_FLAGS=ON
+            -DCMAKE_EXE_LINKER_FLAGS="-static -static-libgcc -static-libstdc++"
 
       - name: Build innoextract
         shell: msys2 {0}
