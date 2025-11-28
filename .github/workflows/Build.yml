@@ -51,7 +51,7 @@ jobs:
             -DBUILD_TESTS=OFF \
             -DRUN_TESTS=OFF \
             -DUSE_LTO=OFF \
-            -DSET_OPTIMIZATION_FLAGS=ON
+            -DSET_OPTIMIZATION_FLAGS=ON \
             -DCMAKE_EXE_LINKER_FLAGS="-static -static-libgcc -static-libstdc++"
 
       - name: Build innoextract
@@ -66,6 +66,12 @@ jobs:
           cd innoextract/build
           ldd innoextract.exe || true
           file innoextract.exe
+
+      - name: Test binary
+        shell: msys2 {0}
+        run: |
+          cd innoextract/build
+          ./innoextract --version
 
       - name: Upload artifact
         uses: actions/upload-artifact@v5
