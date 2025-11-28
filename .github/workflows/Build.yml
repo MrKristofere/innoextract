@@ -21,29 +21,51 @@ jobs:
             mingw-w64-x86_64-boost
             mingw-w64-x86_64-xz
             mingw-w64-x86_64-libiconv
+            mingw-w64-x86_64-zlib
+            mingw-w64-x86_64-bzip2
+            git
           msystem: MINGW64
+
+      - name: Clone innoextract repository
+        shell: msys2 {0}
+        run: |
+          git clone https://github.com/dscharrer/innoextract.git
+          cd innoextract
 
       - name: Configure build
         shell: msys2 {0}
         run: |
+          cd innoextract
           mkdir -p build && cd build
           cmake .. \
             -G "MinGW Makefiles" \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr/local \
             -DUSE_LZMA=ON \
             -DUSE_STATIC_LIBS=ON \
+            -DLZMA_USE_STATIC_LIBS=ON \
+            -DBoost_USE_STATIC_LIBS=ON \
+            -DZLIB_USE_STATIC_LIBS=ON \
+            -DBZip2_USE_STATIC_LIBS=ON \
             -DBUILD_TESTS=OFF \
             -DRUN_TESTS=OFF \
-            -DCONTINUOUS_INTEGRATION=OFF \
-            -DUSE_LTO=OFF
+            -DUSE_LTO=ON \
+            -DSET_OPTIMIZATION_FLAGS=ON
 
-      - name: Build innoextract.exe
+      - name: Build innoextract
         shell: msys2 {0}
         run: |
-          cmake --build build --config Release
+          cd innoextract/build
+          make -j$(nproc)
+
+      - name: Test binary
+        shell: msys2 {0}
+        run: |
+          cd innoextract/build
+          ./innoextract --version
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: innoextract-windows-mingw64
-          path: build/innoextract.exe
+          path: innoextract/build/innoextract.exe
