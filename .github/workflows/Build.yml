@@ -24,7 +24,6 @@ jobs:
             mingw-w64-x86_64-zlib
             mingw-w64-x86_64-bzip2
             git
-            make
           msystem: MINGW64
 
       - name: Clone innoextract repository
@@ -50,7 +49,7 @@ jobs:
             -DBZip2_USE_STATIC_LIBS=ON \
             -DBUILD_TESTS=OFF \
             -DRUN_TESTS=OFF \
-            -DUSE_LTO=ON \
+            -DUSE_LTO=OFF \
             -DSET_OPTIMIZATION_FLAGS=ON
 
       - name: Build innoextract
