@@ -65,7 +65,6 @@ jobs:
           
           # Добавляем опции в зависимости от типа сборки
           if [ "${{ github.event.inputs.static_build }}" = "true" ]; then
-            # Статическая сборка: LTO ВЫКЛЮЧЕН
             CMAKE_OPTIONS+=(
               -DUSE_STATIC_LIBS=ON
               -DLZMA_USE_STATIC_LIBS=ON
@@ -78,7 +77,6 @@ jobs:
             )
             echo "Настройка для СТАТИЧЕСКОЙ линковки (LTO отключен)"
           else
-            # Динамическая сборка: LTO ВКЛЮЧЕН
             CMAKE_OPTIONS+=(
               -DUSE_STATIC_LIBS=OFF
               -DUSE_LTO=ON
@@ -98,7 +96,7 @@ jobs:
         shell: msys2 {0}
         run: |
           cd build
-          /mingw64/bin/strip --strip-unneeded innoextract.exe
+          /mingw64/bin/strip --strip-all innoextract.exe
 
       - name: Check binary dependencies
         shell: msys2 {0}
@@ -116,50 +114,13 @@ jobs:
           cd build
           ./innoextract --version
 
-      - name: Copy DLL to executable directory (dynamic build only)
+      - name: Copy DLL dependencies
         if: inputs.static_build == false
         shell: msys2 {0}
         run: |
           cd build
-          echo "Копирование DLL в директорию с исполняемым файлом..."
-          
-          # Функция для поиска и копирования зависимостей
-          copy_dependencies() {
-            local exe="$1"
-            
-            # Используем ldd для поиска зависимостей MSYS2/MINGW
-            ldd "$exe" 2>/dev/null | while read line; do
-              # Ищем DLL из MSYS2/MINGW (не системные)
-              if [[ "$line" == *"=> /mingw64/"* ]] || [[ "$line" == *"=> /usr/bin/"* ]]; then
-                # Извлекаем путь к DLL
-                dll_path=$(echo "$line" | awk '{print $3}' | tr -d ' ')
-                if [ -f "$dll_path" ]; then
-                  dll_name=$(basename "$dll_path")
-                  echo "Копирую: $dll_name"
-                  cp "$dll_path" ./
-                fi
-              fi
-            done
-          }
-          
-          # Копируем зависимости
-          copy_dependencies innoextract.exe
-          
-          # Дополнительно проверяем стандартные DLL если их нет
-          for dll in libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
-            if [ ! -f "./$dll" ]; then
-              # Проверяем в стандартных путях
-              if [ -f "/mingw64/bin/$dll" ]; then
-                echo "Копирую недостающую DLL: $dll"
-                cp "/mingw64/bin/$dll" ./
-              fi
-            fi
-          done
-          
-          # Показываем список файлов в build директории
-          echo "=== Файлы в build директории ==="
-          ls -la | grep -E '\.(exe|dll)$'
-
+          ldd innoextract.exe 2>/dev/null | awk '/=> \/(mingw64|usr\/bin)\// {print $3}' | xargs cp -t ./
+    
       - name: Upload artifact
         uses: actions/upload-artifact@v5
         with:
