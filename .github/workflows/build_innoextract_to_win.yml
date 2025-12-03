@@ -60,7 +60,7 @@ jobs:
             -DUSE_LZMA=ON
             -DBUILD_TESTS=OFF
             -DRUN_TESTS=OFF
-            -DUSE_LTO=OFF
+            -DUSE_LTO=ON
             -DSET_OPTIMIZATION_FLAGS=ON
           )
           
