@@ -35,9 +35,9 @@ jobs:
             git
           msystem: MINGW64
 
-      # Условный шаг только для статической сборки
-      - name: Remove bzip2 import dll (только для статической сборки)
-        if: inputs.static_build == false
+      # Удаление DLL только для статической сборки
+      - name: Remove bzip2 import dll (only for static build)
+        if: inputs.static_build == true
         shell: msys2 {0}
         run: |
           echo "Удаление динамических библиотек bzip2 для статической линковки..."
@@ -60,12 +60,12 @@ jobs:
             -DUSE_LZMA=ON
             -DBUILD_TESTS=OFF
             -DRUN_TESTS=OFF
-            -DUSE_LTO=ON
             -DSET_OPTIMIZATION_FLAGS=ON
           )
           
           # Добавляем опции в зависимости от типа сборки
           if [ "${{ github.event.inputs.static_build }}" = "true" ]; then
+            # Статическая сборка: LTO ВЫКЛЮЧЕН
             CMAKE_OPTIONS+=(
               -DUSE_STATIC_LIBS=ON
               -DLZMA_USE_STATIC_LIBS=ON
@@ -74,13 +74,16 @@ jobs:
               -DBZip2_USE_STATIC_LIBS=ON
               -Diconv_USE_STATIC_LIBS=ON
               -DCMAKE_EXE_LINKER_FLAGS="-static -static-libgcc -static-libstdc++"
+              -DUSE_LTO=OFF
             )
-            echo "Настройка для СТАТИЧЕСКОЙ линковки"
+            echo "Настройка для СТАТИЧЕСКОЙ линковки (LTO отключен)"
           else
+            # Динамическая сборка: LTO ВКЛЮЧЕН
             CMAKE_OPTIONS+=(
               -DUSE_STATIC_LIBS=OFF
+              -DUSE_LTO=ON
             )
-            echo "Настройка для ДИНАМИЧЕСКОЙ линковки"
+            echo "Настройка для ДИНАМИЧЕСКОЙ линковки (LTO включен)"
           fi
           
           cmake .. "${CMAKE_OPTIONS[@]}"
@@ -91,7 +94,6 @@ jobs:
           cd build
           mingw32-make -j$(nproc)
 
-      # Стриппинг только для статической сборки
       - name: Strip binary
         shell: msys2 {0}
         run: |
@@ -114,71 +116,52 @@ jobs:
           cd build
           ./innoextract --version
 
-      # Определяем зависимости и копируем DLL для динамической сборки
-      - name: Collect DLL dependencies (только для динамической сборки)
+      - name: Copy DLL to executable directory (dynamic build only)
         if: inputs.static_build == false
         shell: msys2 {0}
         run: |
           cd build
-          echo "Сбор зависимых DLL..."
+          echo "Копирование DLL в директорию с исполняемым файлом..."
           
-          # Создаем временный скрипт для анализа зависимостей
-          cat > find_deps.sh << 'EOF'
-          #!/bin/bash
-          EXE="$1"
-          DEPS_DIR="$2"
+          # Функция для поиска и копирования зависимостей
+          copy_dependencies() {
+            local exe="$1"
+            
+            # Используем ldd для поиска зависимостей MSYS2/MINGW
+            ldd "$exe" 2>/dev/null | while read line; do
+              # Ищем DLL из MSYS2/MINGW (не системные)
+              if [[ "$line" == *"=> /mingw64/"* ]] || [[ "$line" == *"=> /usr/bin/"* ]]; then
+                # Извлекаем путь к DLL
+                dll_path=$(echo "$line" | awk '{print $3}' | tr -d ' ')
+                if [ -f "$dll_path" ]; then
+                  dll_name=$(basename "$dll_path")
+                  echo "Копирую: $dll_name"
+                  cp "$dll_path" ./
+                fi
+              fi
+            done
+          }
           
-          # Используем ldd для поиска зависимостей
-          ldd "$EXE" | grep "=> /mingw64" | awk '{print $3}' | while read dll; do
-            if [ -f "$dll" ]; then
-              echo "Копирую: $dll"
-              cp "$dll" "$DEPS_DIR/"
-            fi
-          done
+          # Копируем зависимости
+          copy_dependencies innoextract.exe
           
-          # Также проверяем системные DLL в пути MSYS2
-          ldd "$EXE" | grep "=> /usr/bin" | awk '{print $3}' | while read dll; do
-            if [ -f "$dll" ]; then
-              echo "Копирую: $dll"
-              cp "$dll" "$DEPS_DIR/"
-            fi
-          done
-          EOF
-          
-          chmod +x find_deps.sh
-          
-          # Создаем директорию для DLL
-          mkdir -p dll_deps
-          
-          # Запускаем анализ зависимостей
-          ./find_deps.sh innoextract.exe dll_deps
-          
-          # Дополнительно копируем возможные необходимые DLL из mingw64/bin
-          MINGW_BIN="/mingw64/bin"
+          # Дополнительно проверяем стандартные DLL если их нет
           for dll in libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
-            if [ -f "$MINGW_BIN/$dll" ] && [ -f "dll_deps/$dll" ]; then
-              echo "Проверяю: $dll"
-              cp "$MINGW_BIN/$dll" dll_deps/ 2>/dev/null || true
+            if [ ! -f "./$dll" ]; then
+              # Проверяем в стандартных путях
+              if [ -f "/mingw64/bin/$dll" ]; then
+                echo "Копирую недостающую DLL: $dll"
+                cp "/mingw64/bin/$dll" ./
+              fi
             fi
           done
           
-          # Показываем список собранных DLL
-          echo "=== Собранные DLL ==="
-          ls -la dll_deps/
+          # Показываем список файлов в build директории
+          echo "=== Файлы в build директории ==="
+          ls -la | grep -E '\.(exe|dll)$'
 
-      # Выгрузка артефактов в зависимости от типа сборки
-      - name: Upload static build artifact
-        if: inputs.static_build == true
+      - name: Upload artifact
         uses: actions/upload-artifact@v5
         with:
-          name: innoextract-windows-mingw64-static
-          path: build/innoextract.exe
-
-      - name: Upload dynamic build artifacts
-        if: inputs.static_build == false
-        uses: actions/upload-artifact@v5
-        with:
-          name: innoextract-windows-mingw64-dynamic
-          path: |
-            build/innoextract.exe
-            build/dll_deps/
+          name: ${{ github.event.inputs.static_build == 'true' && format('innoextract-windows-mingw64-static') || format('innoextract-windows-mingw64-dynamic') }}
+          path: build/
