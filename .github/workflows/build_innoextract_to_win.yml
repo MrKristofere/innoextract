@@ -93,7 +93,6 @@ jobs:
 
       # Стриппинг только для статической сборки
       - name: Strip binary
-        if: inputs.static_build
         shell: msys2 {0}
         run: |
           cd build
@@ -169,7 +168,7 @@ jobs:
 
       # Выгрузка артефактов в зависимости от типа сборки
       - name: Upload static build artifact
-        if: inputs.static_build
+        if: inputs.static_build == true
         uses: actions/upload-artifact@v5
         with:
           name: innoextract-windows-mingw64-static
@@ -183,11 +182,3 @@ jobs:
           path: |
             build/innoextract.exe
             build/dll_deps/
-
-      # Альтернативный вариант: один шаг с разными путями
-      - name: Upload artifacts (альтернативный вариант)
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: ${{ github.event.inputs.static_build && 'innoextract-static' || 'innoextract-dynamic' }}
-          path: ${{ github.event.inputs.static_build && 'build/innoextract.exe' || 'build/' }}
