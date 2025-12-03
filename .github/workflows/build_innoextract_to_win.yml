@@ -37,7 +37,7 @@ jobs:
 
       # Условный шаг только для статической сборки
       - name: Remove bzip2 import dll (только для статической сборки)
-        if: inputs.static_build
+        if: inputs.static_build == false
         shell: msys2 {0}
         run: |
           echo "Удаление динамических библиотек bzip2 для статической линковки..."
