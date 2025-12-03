@@ -96,7 +96,7 @@ jobs:
         shell: msys2 {0}
         run: |
           cd build
-          /mingw64/bin/strip --strip-all innoextract.exe
+          /mingw64/bin/strip --strip-unneeded innoextract.exe
 
       - name: Check binary dependencies
         shell: msys2 {0}
@@ -114,13 +114,17 @@ jobs:
           cd build
           ./innoextract --version
 
+      
       - name: Copy DLL dependencies
         if: inputs.static_build == false
         shell: msys2 {0}
         run: |
           cd build
-          ldd innoextract.exe 2>/dev/null | awk '/=> \/(mingw64|usr\/bin)\// {print $3}' | xargs cp -t ./
-    
+          ldd innoextract.exe 2>/dev/null | \
+            awk '/=> \/(mingw64|usr\/bin)\// {print $3}' | \
+            grep '\.dll$' | \
+            xargs cp -t ./ 2>/dev/null || true
+          
       - name: Upload artifact
         uses: actions/upload-artifact@v5
         with:
