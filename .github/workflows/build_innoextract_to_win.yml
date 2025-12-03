@@ -2,6 +2,12 @@ name: Build InnoExtract (Windows, MSYS2 MinGW GCC)
 
 on:
   workflow_dispatch:
+    inputs:
+      static_build:
+        description: 'Build with static linking?'
+        required: true
+        default: true
+        type: boolean
 
 jobs:
   build:
@@ -29,10 +35,12 @@ jobs:
             git
           msystem: MINGW64
 
-      - name: Remove bzip2 import dll (to make it static)
+      # Условный шаг только для статической сборки
+      - name: Remove bzip2 import dll (только для статической сборки)
+        if: inputs.static_build
         shell: msys2 {0}
         run: |
-          echo "Removing bzip2 dynamic libraries..."
+          echo "Удаление динамических библиотек bzip2 для статической линковки..."
           cd /mingw64/lib
           rm -f libbz2.dll.a
 
@@ -41,24 +49,41 @@ jobs:
         run: |
           mkdir -p build
           cd build
-          cmake .. \
-            -G "MinGW Makefiles" \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX=/usr/local \
-            -DCMAKE_C_COMPILER=gcc \
-            -DCMAKE_CXX_COMPILER=g++ \
-            -DUSE_LZMA=ON \
-            -DUSE_STATIC_LIBS=ON \
-            -DLZMA_USE_STATIC_LIBS=ON \
-            -DBoost_USE_STATIC_LIBS=ON \
-            -DZLIB_USE_STATIC_LIBS=ON \
-            -DBZip2_USE_STATIC_LIBS=ON \
-            -Diconv_USE_STATIC_LIBS=ON \
-            -DBUILD_TESTS=OFF \
-            -DRUN_TESTS=OFF \
-            -DUSE_LTO=OFF \
-            -DSET_OPTIMIZATION_FLAGS=ON \
-            -DCMAKE_EXE_LINKER_FLAGS="-static -static-libgcc -static-libstdc++"
+          
+          # Базовые опции CMake
+          CMAKE_OPTIONS=(
+            -G "MinGW Makefiles"
+            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_INSTALL_PREFIX=/usr/local
+            -DCMAKE_C_COMPILER=gcc
+            -DCMAKE_CXX_COMPILER=g++
+            -DUSE_LZMA=ON
+            -DBUILD_TESTS=OFF
+            -DRUN_TESTS=OFF
+            -DUSE_LTO=OFF
+            -DSET_OPTIMIZATION_FLAGS=ON
+          )
+          
+          # Добавляем опции в зависимости от типа сборки
+          if [ "${{ github.event.inputs.static_build }}" = "true" ]; then
+            CMAKE_OPTIONS+=(
+              -DUSE_STATIC_LIBS=ON
+              -DLZMA_USE_STATIC_LIBS=ON
+              -DBoost_USE_STATIC_LIBS=ON
+              -DZLIB_USE_STATIC_LIBS=ON
+              -DBZip2_USE_STATIC_LIBS=ON
+              -Diconv_USE_STATIC_LIBS=ON
+              -DCMAKE_EXE_LINKER_FLAGS="-static -static-libgcc -static-libstdc++"
+            )
+            echo "Настройка для СТАТИЧЕСКОЙ линковки"
+          else
+            CMAKE_OPTIONS+=(
+              -DUSE_STATIC_LIBS=OFF
+            )
+            echo "Настройка для ДИНАМИЧЕСКОЙ линковки"
+          fi
+          
+          cmake .. "${CMAKE_OPTIONS[@]}"
 
       - name: Build innoextract
         shell: msys2 {0}
@@ -66,7 +91,9 @@ jobs:
           cd build
           mingw32-make -j$(nproc)
 
+      # Стриппинг только для статической сборки
       - name: Strip binary
+        if: inputs.static_build
         shell: msys2 {0}
         run: |
           cd build
@@ -76,8 +103,11 @@ jobs:
         shell: msys2 {0}
         run: |
           cd build
-          ldd innoextract.exe || true
+          echo "=== Информация о файле ==="
           file innoextract.exe
+          echo ""
+          echo "=== Динамические зависимости ==="
+          ldd innoextract.exe 2>/dev/null || echo "ldd недоступен или бинарник полностью статический"
 
       - name: Test binary
         shell: msys2 {0}
@@ -85,8 +115,79 @@ jobs:
           cd build
           ./innoextract --version
 
-      - name: Upload artifact
+      # Определяем зависимости и копируем DLL для динамической сборки
+      - name: Collect DLL dependencies (только для динамической сборки)
+        if: inputs.static_build == false
+        shell: msys2 {0}
+        run: |
+          cd build
+          echo "Сбор зависимых DLL..."
+          
+          # Создаем временный скрипт для анализа зависимостей
+          cat > find_deps.sh << 'EOF'
+          #!/bin/bash
+          EXE="$1"
+          DEPS_DIR="$2"
+          
+          # Используем ldd для поиска зависимостей
+          ldd "$EXE" | grep "=> /mingw64" | awk '{print $3}' | while read dll; do
+            if [ -f "$dll" ]; then
+              echo "Копирую: $dll"
+              cp "$dll" "$DEPS_DIR/"
+            fi
+          done
+          
+          # Также проверяем системные DLL в пути MSYS2
+          ldd "$EXE" | grep "=> /usr/bin" | awk '{print $3}' | while read dll; do
+            if [ -f "$dll" ]; then
+              echo "Копирую: $dll"
+              cp "$dll" "$DEPS_DIR/"
+            fi
+          done
+          EOF
+          
+          chmod +x find_deps.sh
+          
+          # Создаем директорию для DLL
+          mkdir -p dll_deps
+          
+          # Запускаем анализ зависимостей
+          ./find_deps.sh innoextract.exe dll_deps
+          
+          # Дополнительно копируем возможные необходимые DLL из mingw64/bin
+          MINGW_BIN="/mingw64/bin"
+          for dll in libgcc_s_seh-1.dll libstdc++-6.dll libwinpthread-1.dll; do
+            if [ -f "$MINGW_BIN/$dll" ] && [ -f "dll_deps/$dll" ]; then
+              echo "Проверяю: $dll"
+              cp "$MINGW_BIN/$dll" dll_deps/ 2>/dev/null || true
+            fi
+          done
+          
+          # Показываем список собранных DLL
+          echo "=== Собранные DLL ==="
+          ls -la dll_deps/
+
+      # Выгрузка артефактов в зависимости от типа сборки
+      - name: Upload static build artifact
+        if: inputs.static_build
         uses: actions/upload-artifact@v5
         with:
           name: innoextract-windows-mingw64-static
           path: build/innoextract.exe
+
+      - name: Upload dynamic build artifacts
+        if: inputs.static_build == false
+        uses: actions/upload-artifact@v5
+        with:
+          name: innoextract-windows-mingw64-dynamic
+          path: |
+            build/innoextract.exe
+            build/dll_deps/
+
+      # Альтернативный вариант: один шаг с разными путями
+      - name: Upload artifacts (альтернативный вариант)
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: ${{ github.event.inputs.static_build && 'innoextract-static' || 'innoextract-dynamic' }}
+          path: ${{ github.event.inputs.static_build && 'build/innoextract.exe' || 'build/' }}
